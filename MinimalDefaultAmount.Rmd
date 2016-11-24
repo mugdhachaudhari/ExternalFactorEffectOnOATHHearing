@@ -1,0 +1,126 @@
+---
+title: "MinimalDefaultAmount"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r Set Working Directory}
+setwd("F:/MSCSNyuPoly/Fall2016/FoundationsOfDataScience/Project/Work")
+```
+
+install.packages("sqldf")
+
+data2015 <- read.csv("2015_dataMain.csv")
+#COnvert factor to character
+data2015$Total.Violation.Amount <- as.character(levels(data2015$Total.Violation.Amount)[data2015$Total.Violation.Amount])
+#Replace $ sign with blank
+data2015$Total.Violation.Amount <- sapply(data2015["Total.Violation.Amount"], function(x) as.character(gsub("\\$", "", x)))
+#Convert character to numeric
+data2015$Total.Violation.Amount <- as.numeric(data2015$Total.Violation.Amount)
+
+#Select only Total Violation Amount column
+data2015Amt <- subset(data2015, select = c("Total.Violation.Amount"))
+#Total number of violations
+ttlViolation <- nrow(data2015Amt)
+#Aggregation to find percentage occurenece of each penalty amount
+options(scipen = 999)  #To disable scietific notation
+ttlAgg <- do.call(data.frame, aggregate(cbind(count = Total.Violation.Amount) ~ Total.Violation.Amount, data = data2015Amt, 
+          FUN = function(x) c({round((NROW(x) / ttlViolation) * 100, digits = 4)}, {NROW(x)})))
+colnames(ttlAgg) <- c("Total.Violation.Amount", "ttlPercent", "ttlCnt")
+
+#Select data where Hearing Status is PAID IN FULL and Decision Date is blank. It means that amount has been paid in full before taking any decision
+data2015Paid <- subset(data2015, Hearing.Status == "PAID IN FULL" & Decision.Date == "", select = c("Total.Violation.Amount"))
+#Aggregation  to find percentage occurence of penalty where user has paid fully
+paidAgg <- do.call(data.frame, aggregate(cbind(count = Total.Violation.Amount) ~ Total.Violation.Amount, data = data2015Paid, FUN = function(x)c({round((NROW(x) / ttlViolation) * 100, digits = 4)}, {NROW(x)})))
+colnames(paidAgg) <- c("Total.Violation.Amount", "paidPercentFromTotal", "paidCount")
+
+#Left join of ttl Percentage and paid percentage
+mergeData <- merge(x = ttlAgg, y = paidAgg, by = "Total.Violation.Amount", all.x = TRUE)
+#Replace NA with 0
+mergeData <- data.frame(apply(mergeData, 2, function(x){replace(x, is.na(x), 0)}))
+#Calculate percentage violations per amount where penalty was paid before decision
+mergeData$paidPercentPerPenalty <- (mergeData[,"paidCount"] / mergeData[,"ttlCnt"]) * 100
+
+mergeData
+colnames(mergeData)
+#Plot penalty amount vs percentage of violations in which penalty was paid before decision
+
+sampleMergeData <- mergeData[mergeData$Total.Violation.Amount < 4000,]
+
+
+plot(mergeData[,"Total.Violation.Amount"], mergeData[,"paidPercentPerPenalty"], type = 'o', main = "No of times Penalty Paid before Decision per Amount", xlab = "Penalty Amount", ylab = "Percentage", col = "blue")
+
+#Same plot with less data
+plot(sampleMergeData[,"Total.Violation.Amount"], sampleMergeData[,"paidPercentPerPenalty"], type = 'o', main = "No of times Penalty Paid before Decision per Amount", xlab = "Penalty Amount", ylab = "Percentage", col = "blue")
+
+sampleMergeData <- mergeData[mergeData$Total.Violation.Amount < 1000,]
+#Plot penalty amount vs ttl percentage and penalty paid percentage
+plot(sampleMergeData[,"Total.Violation.Amount"], sampleMergeData[,"ttlPercent"], type = 'o', main = "", xlab = "Penalty Amount", ylab = "Percentage", col = "blue")
+lines(sampleMergeData[,"Total.Violation.Amount"], sampleMergeData[,"paidPercentFromTotal"], col = "red")
+
+#Barplot
+head(mergeData)
+rownames(sampleMergeData) <- sampleMergeData$Total.Violation.Amount
+barplot(t(as.matrix(sampleMergeData[,c(2,4)])), col=c("darkblue","red"), legend=c("Total", "Paid"),ylim=c(0, 60), xlab = "Amount", main = "Per Amount Paid Penalty Before Decision", beside=TRUE)
+
+#We can see that for lower penalty amount there is more percentage to pay penalty beofre decison. It is highest for penalty amount $25.
+
+
+#How much revenue is lost on defaulted penalties
+copyData2015 <- data2015
+Convert violation date to month
+#Extract month from violation date
+copyData2015$Violation.Date <- format(as.Date(as.character(copyData2015$Violation.Date), "%m/%d/%Y"), "%m")
+#Select defaulted violations
+data15MonthDefaulted <- subset(copyData2015, (Hearing.Status == "DOCKETED" | Hearing.Status == "DEFAULTED") & Hearing.Result == "DEFAULTED", select = c("Violation.Date", "Total.Violation.Amount"))
+
+#Select subset of data for all violations
+data15Month <- subset(copyData2015, select = c("Violation.Date", "Total.Violation.Amount"))
+
+#Aggregate default violations
+dataMonthDeafaultedAgg <- do.call(data.frame, aggregate(cbind(sum = Total.Violation.Amount) ~ Violation.Date, data = data15MonthDefaulted, FUN = sum))
+colnames(dataMonthDeafaultedAgg) <- c("Violation.Date", "DefaultedSum")
+#Aggregate all violations
+data15MonthAgg <- do.call(data.frame, aggregate(cbind(sum = Total.Violation.Amount) ~ Violation.Date, data = data15Month, FUN = sum))
+colnames(data15MonthAgg) <- c("Violation.Date", "ttlSum")
+#Join and calculate percentage
+mergeData <- merge(x = data15MonthAgg, y = dataMonthDeafaultedAgg, by = "Violation.Date", all.x = TRUE)
+mergeData$Violation.Date <- as.character(mergeData$Violation.Date)
+
+#Plot bargraph
+rownames(mergeData) <- mergeData$Violation.Date
+barplot(t(as.matrix(mergeData[,c(2,3)])), col=c("darkblue","red"), legend=c("Total", "Defaulted"), xlab = "Month", main = "Monthwise Total Revenue and lost revenue", beside=TRUE)
+
+
+
+#Find percentage of defaulted violations per agency, violationLoc, Penalty, Respondent Location
+copyData2015 <- data2015
+colnames(data2015)
+#Select defaulted violations
+data15Defaulted <- subset(copyData2015, (Hearing.Status == "DOCKETED" | Hearing.Status == "DEFAULTED") & Hearing.Result == "DEFAULTED", select = c("Charge..1..Code.Description", "Violation.Location..Zip.Code.", "Respondent.Address..Zip.Code.", "Total.Violation.Amount"))
+
+#Select subset of data for all violations
+data15All <- subset(copyData2015, select = c("Charge..1..Code.Description", "Violation.Location..Zip.Code.", "Respondent.Address..Zip.Code.", "Total.Violation.Amount"))
+
+#Aggregate default violations
+dataDeafaultedAgg <- do.call(data.frame, aggregate(cbind(DefaultedCount = Total.Violation.Amount) ~ (Charge..1..Code.Description + Violation.Location..Zip.Code. + Respondent.Address..Zip.Code. + Total.Violation.Amount), data = data15Defaulted, FUN = function(x)c({NROW(x)})))
+
+#Aggregate all violations
+data15AllAgg <- do.call(data.frame, aggregate(cbind(TotalCount = Total.Violation.Amount) ~ (Charge..1..Code.Description + Violation.Location..Zip.Code. + Respondent.Address..Zip.Code. + Total.Violation.Amount), data = data15All, FUN = function(x)c({NROW(x)})))
+colnames(data15AllAgg)
+#Join and calculate percentage
+mergeData <- merge(x = data15AllAgg, y = dataDeafaultedAgg, by = c("Charge..1..Code.Description", "Violation.Location..Zip.Code.", "Respondent.Address..Zip.Code.", "Total.Violation.Amount"), all.x = TRUE)
+mergeData$Percentage <- (mergeData[,"DefaultedCount"]/mergeData[,"TotalCount"])*100
+mergeData <- data.frame(apply(mergeData, 2, function(x){replace(x, is.na(x), 0)}))
+mergeData$Percentage <- as.numeric(as.character(mergeData$Percentage))
+
+mergeData <- subset(mergeData, as.numeric(TotalCount) > 100,select = c( "Charge..1..Code.Description", "Violation.Location..Zip.Code.", "Respondent.Address..Zip.Code.", "Total.Violation.Amount", "TotalCount", "DefaultedCount", "Percentage"))
+#Top 100 combination of Issuing Agency, Violation Address, Respondent Address, Total Violation amount where most of violations are defaulted
+top100 <- head(mergeData[order(mergeData$Percentage,decreasing=T),], 100)
+bottom100 <- head(mergeData[order(mergeData$Percentage),], 100)
+
+
+
+
