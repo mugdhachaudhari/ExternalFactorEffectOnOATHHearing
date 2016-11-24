@@ -1,0 +1,135 @@
+---
+title: "Project Proposal"
+author: "sahil"
+date: "October 19, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+setwd("/home/sahil/Documents/FDS/project/")
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+library(chron)
+library(lubridate)
+df <- read.csv("default2015 (1).csv",na.strings=c("","NA"))
+df1 <- df
+df_unique <- unique(df$Issuing.Agency)
+indx <- sapply(df, is.factor) 
+df[indx] <- lapply(df[indx], function(x) 
+                            as.character(gsub("\\$", "", x)))
+df<-data.frame(lapply(df,factor))
+df$Violation.Date<- as.Date(df$Violation.Date, "%m/%d/%Y")
+df$Violation.Time <- chron(times. = df$Violation.Time)
+df$Penalty.Imposed <- as.numeric(as.character(df$Penalty.Imposed))
+
+newdf <- data.frame(df[,c("Violation.Date","Violation.Time","Issuing.Agency","Respondent.Last.Name","Violation.Location..Borough.","Violation.Location..Zip.Code.", "Hearing.Result", "Balance.Due","Hearing.Date","Violation.Details","Paid.Amount", "Charge..1..Code.Description", "Total.Violation.Amount", "Scheduled.Hearing.Location", "Hearing.Time", "Compliance.Status","Hearing.Date" )])
+newdf$Hearing.Time <- chron(times. = newdf$Hearing.Time)
+newdf$Hearing.Date <- as.Date(newdf$Hearing.Date,"%m/%d/%Y")
+```
+```{r}
+library(caret)
+knndf<-newdf[ , -which(names(newdf) %in% c("Respondent.Last.Name","Balance.Due","Violation.Date", "Violation.Time", "Violation.Details","Paid.Amount","Charge..1..Code.Description", "Compliance.Status","Hearing.Date.1","Violation.Location..Zip.Code.","Hearing.Date","Penalty.Imposed"))]
+knndf <- knndf[!(as.numeric(knndf$Issuing.Agency) %in% which(table(knndf$Issuing.Agency)<500)),]
+knndf <- knndf[!(as.numeric(knndf$Scheduled.Hearing.Location) %in% which(table(knndf$Scheduled.Hearing.Location)<10)),]
+knndf <- knndf[!(as.numeric(knndf$Violation.Location..Borough.) %in% which(table(knndf$Violation.Location..Borough.)<150)),]
+knndf <- droplevels(knndf)
+lapply(knndf, class)
+pIndex <- createDataPartition(knndf$Issuing.Agency, p = .1,
+                                  list = FALSE,
+                                  times = 1)
+sampledf <- knndf[pIndex,]
+Mode <- function (x, na.rm) {
+    xtab <- table(x)
+    xmode <- names(which(xtab == max(xtab)))
+    if (length(xmode) > 1) xmode <- ">1 mode"
+    return(xmode)
+}
+for (var in 1:ncol(knndf)) {
+  sampledf[is.na(sampledf[,var]),var] <- Mode(sampledf[,var], na.rm = TRUE)
+}
+trainIndex <- createDataPartition(sampledf$Hearing.Result, p = .8,
+                                  list = FALSE,
+                                  times = 1)
+sampledf$Total.Violation.Amount <- as.numeric(sampledf$Total.Violation.Amount)
+knndf <-na.omit(knndf)
+traindf <- sampledf[trainIndex,]
+testdf <- sampledf[-trainIndex,]
+```
+
+```{r}
+require(class)
+require(knncat)
+traindf <- droplevels(traindf)
+testdf <- droplevels(testdf)
+cl <- traindf$Hearing.Result
+model <- knncat(traindf,testdf,classcol = 3, k = 5)
+pred <- predict(model,traindf,testdf,train.classcol = 3,newdata.classcol = 3)
+cm <-table(pred,testdf$Hearing.Result)
+accuracy<-sum(diag(cm))/sum(cm)
+accuracy
+```
+
+
+```{r}
+idx <- createFolds(sampledf$Hearing.Result,k = 10)
+sapply(idx, length)
+accuracy <- vector()
+for (i in 1:10) {
+  model <- knncat(sampledf[ -idx[[i]] , ], sampledf[ idx[[i]], ], k=c(1,3,5,7,9,11,13,15,19),classcol = 3)
+  pred <- predict(model,sampledf[ -idx[[i]] , ],sampledf[ idx[[i]], ],train.classcol = 3,newdata.classcol = 3)
+  cm <-table(pred,sampledf[ idx[[i]], ]$Hearing.Result)
+  accuracy[i]<-sum(diag(cm))/sum(cm)
+}
+```
+
+```{r}
+k <- 125:135
+accuracy1 <- vector()
+for(x in k){
+  model <- knncat(traindf, testdf,  k = x,classcol = 3)
+  pred <- predict(model,traindf,testdf,train.classcol = 3,newdata.classcol = 3)
+  cm <- table(testdf$Hearing.Result,pred)
+  accuracy1[x] <- sum(diag(cm))/sum(cm)
+  }
+```
+
+
+```{r}
+accuracylm <- vector()
+for (i in 1:10) {
+  model <-glm(Hearing.Result~.,family = binomial,data =sampledf[ -idx[[i]] , ] )
+  pred <- predict(model,sampledf[ idx[[i]], ],type = 'response')
+  cm <- table(sampledf[ idx[[i]], ]$Hearing.Result, pred>0.5)
+
+  accuracylm[i]<-sum(diag(cm))/sum(cm)
+}
+
+```
+
+```{r}
+month <- paste(month(df1$Violation.Date))
+indx <- sapply(df1, is.factor) 
+monthly<-data.frame(aggregate(df1$Penalty.Imposed, list(month),FUN = sum, na.rm = T))
+rownames(monthly) <- monthly$Group.1
+monthly$Group.1 <- as.numeric(as.character(monthly$Group.1))
+monthly<- monthly[order(monthly$Group.1),]
+plot.ts(monthly$Group.1, monthly$x, xlab = "month", ylab = "Revenue Lost (in Dollars)", main = "Revenue Lost in Defaulted Penalties")
+summary(df1$Penalty.Imposed)
+```
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
