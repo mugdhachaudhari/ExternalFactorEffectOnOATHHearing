@@ -115,6 +115,13 @@ for (i in 1:10) {
 ```
 
 ```{r}
+library(randomForest)
+rf <- randomForest(Hearing.Result~., data=sampledf, importance = TRUE)
+varImpPlot(rf)
+importance(rf)
+```
+
+```{r}
 month <- paste(month(df1$Violation.Date))
 indx <- sapply(df1, is.factor) 
 monthly<-data.frame(aggregate(df1$Penalty.Imposed, list(month),FUN = sum, na.rm = T))
