@@ -123,4 +123,69 @@ bottom100 <- head(mergeData[order(mergeData$Percentage),], 100)
 
 
 
+# Clean Neighborhoods
+install.packages("rgdal")
+install.packages("stringr")
+install.packages("rgeos")
+install.packages("dplyr")
+install.packages("Hmisc")
 
+library(rgdal)
+
+nyc <- readOGR(dsn = "ZIP_CODE_040114", layer = "ZIP_CODE_040114")
+
+#Find out all violations related data from 
+
+head(data2015)
+
+
+dataClean <- data2015[ifelse (rowSums(sapply(words, grepl, data2015$Charge..1..Code.Description, ignore.case = TRUE)) > 0, TRUE, FALSE),]
+library(stringr)
+dataClean$Charge..1..Code.Description <- str_trim(dataClean$Charge..1..Code.Description)
+#Just to check what all records selected
+#unique(tolower(dataClean$Charge..1..Code.Description))
+
+#Group by violation zip code and take count
+dataCleanAgg <- do.call(data.frame, aggregate(cbind(count = Violation.Location..Zip.Code.) ~ Violation.Location..Zip.Code., data = dataClean, FUN = function(x) c({NROW(x)})))
+colnames(dataCleanAgg) <- c("ZIPCODE", "count")
+
+library(Hmisc)
+#table(cut2(dataCleanAgg$count, c(30, 300, 1000, 4000)))
+
+#dataCleanAgg$countGrp <- as.factor(as.numeric(cut2(dataCleanAgg$count, c(30, #300, 1000, 4000))))
+
+dataCleanAgg$countGrp <- cut2(dataCleanAgg$count, c(0, 1, 30, 300, 1000, 4000))
+levels(dataCleanAgg$countGrp)
+as.numeric(dataCleanAgg$countGrp)
+
+#Left join with shape file data Ignoring Blank, 0 zipcodes from violation data
+nyc@data <- merge(x = nyc@data, y = dataCleanAgg, by = "ZIPCODE", all.x = TRUE)
+#Replacing NAs with group 1 to include 0 violations.
+nyc@data <- data.frame(apply(nyc@data, 2, function(x){replace(x, is.na(x), "   0")}))
+
+colnames(nyc@data)
+nyc@data$countGrp[nyc@data$countGrp == 1] <- "[   0,  30)"
+#Plot map
+
+library(rgeos)
+nyc_f <- fortify(nyc)
+head(nyc_f)
+nyc$id <- row.names(nyc)
+head(nyc@data, n = 5)
+library(dplyr)
+nyc_f <- left_join(nyc_f, nyc@data)
+
+head(nyc_f)
+
+
+
+
+
+map <- ggplot() +
+geom_polygon(data = nyc_f, aes(x = long, y = lat, group = group, fill = countGrp), color = "black", size = 0.25) +
+coord_equal() +
+labs(fill = "Number of Cleanliness\nRelated Violations 2015") +
+ggtitle("Clean Neighborhoods")
+
+map
+save.pdf(map)
