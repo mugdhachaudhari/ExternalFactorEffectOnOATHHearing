@@ -11,7 +11,7 @@ setwd("F:/MSCSNyuPoly/Fall2016/FoundationsOfDataScience/Project/Work")
 ```
 
 install.packages("sqldf")
-
+install.packages("ggplot2")
 data2015 <- read.csv("2015_dataMain.csv")
 #COnvert factor to character
 data2015$Total.Violation.Amount <- as.character(levels(data2015$Total.Violation.Amount)[data2015$Total.Violation.Amount])
@@ -19,9 +19,12 @@ data2015$Total.Violation.Amount <- as.character(levels(data2015$Total.Violation.
 data2015$Total.Violation.Amount <- sapply(data2015["Total.Violation.Amount"], function(x) as.character(gsub("\\$", "", x)))
 #Convert character to numeric
 data2015$Total.Violation.Amount <- as.numeric(data2015$Total.Violation.Amount)
-
+colnames(data2015)
+data2015 <- subset(data2015, Charge..1..Code.Section != "")
+data2015[data2015$Total.Violation.Amount == 0,]
 #Select only Total Violation Amount column
 data2015Amt <- subset(data2015, select = c("Total.Violation.Amount"))
+data2015Amt[data2015Amt$Total.Violation.Amount == 0,]
 #Total number of violations
 ttlViolation <- nrow(data2015Amt)
 #Aggregation to find percentage occurenece of each penalty amount
@@ -38,6 +41,8 @@ colnames(paidAgg) <- c("Total.Violation.Amount", "paidPercentFromTotal", "paidCo
 
 #Left join of ttl Percentage and paid percentage
 mergeData <- merge(x = ttlAgg, y = paidAgg, by = "Total.Violation.Amount", all.x = TRUE)
+colnames(mergeData)
+head(mergeData)
 #Replace NA with 0
 mergeData <- data.frame(apply(mergeData, 2, function(x){replace(x, is.na(x), 0)}))
 #Calculate percentage violations per amount where penalty was paid before decision
@@ -51,6 +56,38 @@ sampleMergeData <- mergeData[mergeData$Total.Violation.Amount < 4000,]
 
 
 plot(mergeData[,"Total.Violation.Amount"], mergeData[,"paidPercentPerPenalty"], type = 'o', main = "No of times Penalty Paid before Decision per Amount", xlab = "Penalty Amount", ylab = "Percentage", col = "blue")
+
+
+plot(mergeData[,"Total.Violation.Amount"], mergeData[,"ttlPercent"], type = 'o', main = "", xlab = "Penalty Amount", ylab = "Percentage", col = "blue")
+lines(mergeData[,"Total.Violation.Amount"], mergeData[,"paidPercentFromTotal"], col = "red")
+
+max(mergeData[,c(3)])
+head(mergeData)
+rownames(mergeData) <- mergeData$Total.Violation.Amount
+barplot(t(as.matrix(mergeData[,c(3, 5)])), col=c("darkblue","red"), legend=c("Total", "Paid"),ylim=c(0, 320000), xlab = "Amount", main = "Amount vs Count of Total & Amount Paid before Decision", beside=TRUE)
+
+We are not able to see proper result because of large data. Even with barplot we are not able to visualize properly. We can divide data into bins to get overall estimation.
+
+
+library(Hmisc)
+mergeData$amountGrp <- cut2(mergeData$Total.Violation.Amount, c(101, 1001, 2501, 5001, 10001, 100000 ))
+mergeDataAgg <- aggregate(mergeData[,c("ttlCnt","paidCount")], by=list(mergeData$amountGrp), "sum")
+colnames(mergeDataAgg) <- c("Violation.Amount.Grp",  "ttlCnt", "paidCount")
+
+barPlotData <- t(as.matrix(mergeDataAgg[,c(2,3)]))
+names(barPlotData) <- mergeDataAgg[,c(1)]
+bar <- barplot(barPlotData, col=c("darkblue","red"), legend=c("Total", "Paid"),ylim=c(0, 420642),ylab = "Count", xlab = "", main = "Amount vs Count of Total & Amount Paid before Decision", beside=TRUE)
+axis(1, at=bar[1,], labels=mergeDataAgg[,c(1)], font = 2, cex.axis=0.7, las=3)
+
+We can see from plot that maximum number of times amount was paid before decision when penalty amount was less than or equal to 100.
+
+So lets zoom out there.
+
+barplot(t(as.matrix(mergeData[mergeData$Total.Violation.Amount <= 100,c(3, 5)])), col=c("darkblue","red"),ylim=c(0, 320000), xlab = "Amount", main = "Amount vs Count of Total & Amount Paid before Decision", beside=TRUE)
+
+
+plot(as.numeric(mergeDataAgg[,"Violation.Amount.Grp"]), mergeDataAgg[,"ttlCnt"], type = 'o', main = "", xlab = "Penalty Amount", ylab = "Percentage", col = "blue")
+lines(as.numeric(mergeDataAgg[,"Violation.Amount.Grp"]), mergeDataAgg[,"paidCount"], col = "red")
 
 #Same plot with less data
 plot(sampleMergeData[,"Total.Violation.Amount"], sampleMergeData[,"paidPercentPerPenalty"], type = 'o', main = "No of times Penalty Paid before Decision per Amount", xlab = "Penalty Amount", ylab = "Percentage", col = "blue")
@@ -89,9 +126,18 @@ colnames(data15MonthAgg) <- c("Violation.Date", "ttlSum")
 mergeData <- merge(x = data15MonthAgg, y = dataMonthDeafaultedAgg, by = "Violation.Date", all.x = TRUE)
 mergeData$Violation.Date <- as.character(mergeData$Violation.Date)
 
+
 #Plot bargraph
+par(fig = c(0, 1, 0, 1), oma = c(0, 0, 0, 0), mar = c(0, 0, 0, 0), new = TRUE)
+
 rownames(mergeData) <- mergeData$Violation.Date
-barplot(t(as.matrix(mergeData[,c(2,3)])), col=c("darkblue","red"), legend=c("Total", "Defaulted"), xlab = "Month", main = "Monthwise Total Revenue and lost revenue", beside=TRUE)
+
+barplot(t(as.matrix(mergeData[,c(2,3)])), xlab = "Month", col=c("darkblue","red"), main = "Monthwise Total Revenue and lost revenue", beside=TRUE)
+
+legend("topleft", legend=c("Total", "Defaulted"), pch=20, col=c("darkblue","red"), horiz=TRUE, bty='n', cex=0.8)
+
+colnames(mergeData)
+
 
 
 
@@ -110,6 +156,73 @@ dataDeafaultedAgg <- do.call(data.frame, aggregate(cbind(DefaultedCount = Total.
 #Aggregate all violations
 data15AllAgg <- do.call(data.frame, aggregate(cbind(TotalCount = Total.Violation.Amount) ~ (Charge..1..Code.Description + Violation.Location..Zip.Code. + Respondent.Address..Zip.Code. + Total.Violation.Amount), data = data15All, FUN = function(x)c({NROW(x)})))
 colnames(data15AllAgg)
+
+#Group by all columns
+mergeData <- merge(x = data15AllAgg, y = dataDeafaultedAgg, by = c("Charge..1..Code.Description", "Violation.Location..Zip.Code.", "Respondent.Address..Zip.Code.", "Total.Violation.Amount"), all.x = TRUE)
+mergeData <- data.frame(apply(mergeData, 2, function(x){replace(x, is.na(x), 0)}))
+head(mergeData)
+str(mergeData)
+mergeData$TotalCount <- as.numeric(as.character(mergeData$TotalCount))
+mergeData$DefaultedCount <- as.numeric(as.character(mergeData$DefaultedCount))
+mergeData$Violation.Location..Zip.Code. <- (as.character(mergeData$Violation.Location..Zip.Code.))
+mergeData$Respondent.Address..Zip.Code. <- (as.character(mergeData$Respondent.Address..Zip.Code.))
+
+#Agg by Violation zip code
+mergeDataAgg <- aggregate(mergeData[,c("TotalCount", "DefaultedCount")], by = list(mergeData$Violation.Location..Zip.Code.), "sum")
+colnames(mergeDataAgg) <-c("Violation.Location..Zip.Code.", "TotalCount", "DefaultedCount")
+mergeDataAgg <- mergeDataAgg[(nchar(mergeDataAgg$Violation.Location..Zip.Code.) == 5 & mergeDataAgg$TotalCount >= 100),]
+mergeDataAgg$Percentage <- (mergeDataAgg$DefaultedCount/ mergeDataAgg$TotalCount) * 100
+top10 <- head(mergeDataAgg[order(mergeDataAgg$Percentage, decreasing = T), c(1,4)], 10)
+top10
+
+#Agg by respondent Zip code
+head(mergeData)
+mergeDataAgg <- aggregate(mergeData[,c("TotalCount", "DefaultedCount")], by = list(mergeData$Respondent.Address..Zip.Code.), "sum")
+colnames(mergeDataAgg) <-c("Respondent.Address..Zip.Code.", "TotalCount", "DefaultedCount")
+mergeDataAgg <- mergeDataAgg[(nchar(mergeDataAgg$Respondent.Address..Zip.Code.) == 5 & mergeDataAgg$TotalCount >= 100),]
+mergeDataAgg$Percentage <- (mergeDataAgg$DefaultedCount/ mergeDataAgg$TotalCount) * 100
+top10 <- head(mergeDataAgg[order(mergeDataAgg$Percentage, decreasing = T), c(1,4)], 10)
+top10
+
+
+#Agg by Charge
+head(mergeData)
+mergeDataAgg <- aggregate(mergeData[,c("TotalCount", "DefaultedCount")], by = list(mergeData$Charge..1..Code.Description), "sum")
+colnames(mergeDataAgg) <-c("Charge..1..Code.Description", "TotalCount", "DefaultedCount")
+mergeDataAgg <- mergeDataAgg[(mergeDataAgg$TotalCount >= 100),]
+mergeDataAgg$Percentage <- (mergeDataAgg$DefaultedCount/ mergeDataAgg$TotalCount) * 100
+top10 <- head(mergeDataAgg[order(mergeDataAgg$Percentage, decreasing = T), c(1,4)], 10)
+top10
+
+
+#Agg by Amount
+head(mergeData)
+mergeDataAgg <- aggregate(mergeData[,c("TotalCount", "DefaultedCount")], by = list(mergeData$Total.Violation.Amount), "sum")
+colnames(mergeDataAgg) <-c("Total.Violation.Amount", "TotalCount", "DefaultedCount")
+mergeDataAgg <- mergeDataAgg[(mergeDataAgg$TotalCount >= 100),]
+mergeDataAgg$Percentage <- (mergeDataAgg$DefaultedCount/ mergeDataAgg$TotalCount) * 100
+top10 <- head(mergeDataAgg[order(mergeDataAgg$Percentage, decreasing = T), c(1,2, 4)], 10)
+top10
+
+
+
+
+
+
+
+
+
+
+
+
+mergeData$Percentage <- (mergeData[,"DefaultedCount"]/mergeData[,"TotalCount"])*100
+mergeData <- data.frame(apply(mergeData, 2, function(x){replace(x, is.na(x), 0)}))
+mergeData$Percentage <- as.numeric(as.character(mergeData$Percentage))
+
+
+
+
+
 #Join and calculate percentage
 mergeData <- merge(x = data15AllAgg, y = dataDeafaultedAgg, by = c("Charge..1..Code.Description", "Violation.Location..Zip.Code.", "Respondent.Address..Zip.Code.", "Total.Violation.Amount"), all.x = TRUE)
 mergeData$Percentage <- (mergeData[,"DefaultedCount"]/mergeData[,"TotalCount"])*100
@@ -117,10 +230,15 @@ mergeData <- data.frame(apply(mergeData, 2, function(x){replace(x, is.na(x), 0)}
 mergeData$Percentage <- as.numeric(as.character(mergeData$Percentage))
 
 mergeData <- subset(mergeData, as.numeric(TotalCount) > 100,select = c( "Charge..1..Code.Description", "Violation.Location..Zip.Code.", "Respondent.Address..Zip.Code.", "Total.Violation.Amount", "TotalCount", "DefaultedCount", "Percentage"))
+
+head(mergeData)
+
+
 #Top 100 combination of Issuing Agency, Violation Address, Respondent Address, Total Violation amount where most of violations are defaulted
 top100 <- head(mergeData[order(mergeData$Percentage,decreasing=T),], 100)
 bottom100 <- head(mergeData[order(mergeData$Percentage),], 100)
 
+top100
 
 
 # Clean Neighborhoods
@@ -138,7 +256,7 @@ nyc <- readOGR(dsn = "ZIP_CODE_040114", layer = "ZIP_CODE_040114")
 
 head(data2015)
 
-
+words <- c("clean", "receptacle", "dirty", "rubbish", "dirt", "waste", "garbage", "litter", "disposal", "dumping", "mosquito", "smoke")
 dataClean <- data2015[ifelse (rowSums(sapply(words, grepl, data2015$Charge..1..Code.Description, ignore.case = TRUE)) > 0, TRUE, FALSE),]
 library(stringr)
 dataClean$Charge..1..Code.Description <- str_trim(dataClean$Charge..1..Code.Description)
@@ -148,12 +266,12 @@ dataClean$Charge..1..Code.Description <- str_trim(dataClean$Charge..1..Code.Desc
 #Group by violation zip code and take count
 dataCleanAgg <- do.call(data.frame, aggregate(cbind(count = Violation.Location..Zip.Code.) ~ Violation.Location..Zip.Code., data = dataClean, FUN = function(x) c({NROW(x)})))
 colnames(dataCleanAgg) <- c("ZIPCODE", "count")
-
+library(ggplot2)
 library(Hmisc)
 #table(cut2(dataCleanAgg$count, c(30, 300, 1000, 4000)))
 
 #dataCleanAgg$countGrp <- as.factor(as.numeric(cut2(dataCleanAgg$count, c(30, #300, 1000, 4000))))
-
+dataCleanAgg <- subset(dataCleanAgg, nchar(as.character(dataCleanAgg$ZIPCODE)) == 5)
 dataCleanAgg$countGrp <- cut2(dataCleanAgg$count, c(0, 1, 30, 300, 1000, 4000))
 levels(dataCleanAgg$countGrp)
 as.numeric(dataCleanAgg$countGrp)
@@ -164,7 +282,7 @@ nyc@data <- merge(x = nyc@data, y = dataCleanAgg, by = "ZIPCODE", all.x = TRUE)
 nyc@data <- data.frame(apply(nyc@data, 2, function(x){replace(x, is.na(x), "   0")}))
 
 colnames(nyc@data)
-nyc@data$countGrp[nyc@data$countGrp == 1] <- "[   0,  30)"
+
 #Plot map
 
 library(rgeos)
@@ -177,9 +295,9 @@ nyc_f <- left_join(nyc_f, nyc@data)
 
 head(nyc_f)
 
-
-
-
+head(nyc@data, 60)
+head(nyc_f)
+nyc_f@data
 
 map <- ggplot() +
 geom_polygon(data = nyc_f, aes(x = long, y = lat, group = group, fill = countGrp), color = "black", size = 0.25) +
@@ -189,3 +307,4 @@ ggtitle("Clean Neighborhoods")
 
 map
 save.pdf(map)
+
