@@ -112,6 +112,7 @@ for (i in 1:10) {
   cm <-table(pred,sampledf[ idx[[i]], ]$Hearing.Result)
   accuracy[i]<-sum(diag(cm))/sum(cm)
 }
+cm
 ```
 
        
@@ -131,6 +132,7 @@ for (i in 1:10) {
 
   accuracylm[i]<-sum(diag(cm))/sum(cm)
 }
+cm
 ```
                               
 ##Random Forests
@@ -150,6 +152,7 @@ for (i in 1:10) {
   cm <- table(sampledf[ idx[[i]], ]$Hearing.Result, pred)
   accuracyrf[i]<-sum(diag(cm))/sum(cm)
 }
+cm
 ```
 ###Importance Plots.    
 The mean decrease in accuracy a variable causes is determined during the out of bag error calculation phase. The more the accuracy of the random forest decreases due to the exclusion (or permutation) of a single variable, the more important that variable is deemed, and therefore variables with a large mean decrease in accuracy are more important for classification of the data. The mean decrease in Gini coefficient is a measure of how each variable contributes to the homogeneity of the nodes and leaves in the resulting random forest. Each time a particular variable is used to split a node, the Gini coefficient for the child nodes are calculated and compared to that of the original node. The Gini coefficient is a measure of homogeneity from 0 (homogeneous) to 1 (heterogeneous). The changes in Gini are summed for each variable and normalized at the end of the calculation. Variables that result in nodes with higher purity have a higher decrease in Gini coefficient.    
@@ -258,10 +261,12 @@ library("kernlab")
 svm_model1 <- svm(Result ~ ., data=traindf1) #unigramdf
 pred1 <- predict(svm_model1,testdf1)
 cm1 <- table(pred1,testdf1$Result)
+cm1
 sum(diag(cm1))/sum(cm1) #Accuracy unigram linear svm
 svm_model2 <- svm(Result ~ ., data=traindf2)#bigramdf
 pred2 <- predict(svm_model2,testdf2)
 cm2 <- table(pred2,testdf2$Result)
+cm2
 sum(diag(cm2))/sum(cm2) #Accuracy bigram linear svm
 ```
 
@@ -271,10 +276,12 @@ The  accuracy for unigram is clearly low. So let's change the kernel from linear
 svp <- ksvm(Result~., data= traindf1,type="C-svc",kernel='rbf',kpar=list(sigma=1),C=1)
 pred1 <- predict(svp,testdf1)
 cm1 <- table(pred1,testdf1$Result)
+cm1
 sum(diag(cm1))/sum(cm1)#Accuracy unigram rbf kernel
 svp <- ksvm(Result~., data= traindf2,type="C-svc",kernel='rbf',kpar=list(sigma=1),C=1)
 pred2 <- predict(svp,testdf2)
 cm2 <- table(pred2,testdf2$Result)
+cm2
 sum(diag(cm2))/sum(cm2) #Accuracy Bigram rbf
 ```
       
